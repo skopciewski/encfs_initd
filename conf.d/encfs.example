@@ -1,0 +1,7 @@
+# /etc/conf.d/encfs: config file for /etc/init.d/encfs
+
+#Table of mountpoints
+ENCFS_MOUNPOINTS=(
+  'user|/home/user/.enc_share|/home/user/share|pass1'
+  'user2|/home/user2/.enc_personal/home/user/personal|pass2'
+)

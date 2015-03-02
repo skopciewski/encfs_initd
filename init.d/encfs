@@ -1,0 +1,119 @@
+#!/sbin/runscript
+
+parse_row()
+{
+  local row=$1
+  user=$(echo $row | awk -F '|' '{print $1}')
+  target=$(echo $row | awk -F '|' '{print $2}')
+  destination=$(echo $row | awk -F '|' '{print $3}')
+  pass=$(echo $row | awk -F '|' '{print $4}')
+  if [ -z $user ] || [ -z $target ] || [ -z $destination ] || [ -z $pass ]; then
+    return 1
+  fi
+}
+
+validate_user()
+{
+  local user=$1
+  if [ ! $(id -u $user 2>/dev/null) ]; then
+    return 1
+  fi
+}
+
+prepare_target()
+{
+  local path=$1
+  checkpath -d -m 700 -o $user:$user $path
+}
+
+prepare_destination()
+{
+  local path=$1
+  checkpath -d -m 750 -o $user:$user $path
+}
+
+mount_encfs()
+{
+  local user=$1
+  local target=$2
+  local destination=$3
+  local pass=$4
+  sudo -u $user /bin/bash -c "echo $pass | encfs -S --standard $target $destination"
+}
+
+umount_encfs()
+{
+  local user=$1
+  local destination=$2
+  sudo -u $user fusermount -u $destination
+}
+
+mount_row()
+{
+  local row=$1
+  parse_row $row
+  if [ $? -ne 0 ]; then
+    ewarn "Invalid entry in encf config"
+    return 2
+  fi
+  ebegin "> Mounting $destination for user $user"
+  validate_user $user
+  if [ $? -ne 0 ]; then
+    eerror "  User '$user' do not exists"
+    eend 1
+    return 1
+  fi
+  prepare_target $target
+  prepare_destination $destination
+  mount_encfs $user $target $destination $pass
+  if [ $? -ne 0 ]; then
+    eend 1
+    return 1
+  fi
+}
+
+umount_row()
+{
+  local row=$1
+  parse_row $row
+  if [ $? -ne 0 ]; then
+    ewarn "Invalid entry in encf config"
+    return 2
+  fi
+  ebegin "> Unmounting $destination for user $user"
+  validate_user $user
+  if [ $? -ne 0 ]; then
+    eerror "  User '$user' do not exists"
+    eend 1
+    return 1
+  fi
+  umount_encfs $user $destination
+  if [ $? -ne 0 ]; then
+    eend 1
+    return 1
+  fi
+}
+
+depend()
+{
+  need localmount
+  use netmount nfsmount
+}
+
+start()
+{
+  ebegin "Mount users encrypted dirs"
+  for row in ${ENCFS_MOUNPOINTS[*]}; do
+    mount_row $row
+  done
+  eend 0
+}
+
+stop()
+{
+  ebegin "Deactivating encrypted dirs"
+  for row in ${ENCFS_MOUNPOINTS[*]}; do
+    umount_row $row
+  done
+  eend 0
+}
